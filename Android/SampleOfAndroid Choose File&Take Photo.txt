@@ -1,0 +1,391 @@
+﻿
+//1. on Web page add html:
+<input type="file" name="image" accept="image/*" id="fileChoosed">    
+
+//2.android manifest
+
+AndroidManifest.xml
+<uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.CAPTURE_VIDEO_OUTPUT" />
+
+<uses-feature android:name="android.hardware.camera" android:required="true" />
+
+//3. activity_main.xml
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/activity_main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:paddingBottom="0px"
+    android:paddingLeft="0px"
+    android:paddingRight="0px"
+    android:paddingTop="0px"
+    android:background="#364150"
+    android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar"
+    android:popupTheme="@style/ThemeOverlay.AppCompat.Light"
+    tools:context="MainActivity">
+
+    <WebView
+        android:id="@+id/webview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        style="?android:attr/progressBarStyleLarge"
+        android:layout_centerVertical="true"
+        android:layout_centerHorizontal="true" />
+</RelativeLayout>
+
+
+//4. MainActivity.java
+
+...
+ @Override
+    protected void onActivityResult(int requestCode, int resultCode,
+                                    Intent intent) {
+
+
+
+        Log.v(TAG, TAG + " # onActivityResult # requestCode=" + requestCode + " # resultCode=" + resultCode);
+        if (requestCode == FILECHOOSER_RESULTCODE) {
+            if (null == mUploadMessage)
+                return;
+            Uri result = intent == null || resultCode != Activity.RESULT_OK ? null : intent.getData();
+            mUploadMessage.onReceiveValue(result);
+            mUploadMessage = null;
+
+        } else if (requestCode == FILECHOOSER_RESULTCODE_FOR_ANDROID_5) {
+            if (null == mUploadMessageForAndroid5)
+                return;
+            Uri result;
+
+            if (intent == null || resultCode != Activity.RESULT_OK) {
+                result = null;
+            } else {
+                result = intent.getData();
+            }
+
+            if (result != null) {
+                Log.v(TAG, TAG + " # result.getPath()=" + result.getPath());
+                mUploadMessageForAndroid5.onReceiveValue(new Uri[]{result});
+            } else {
+                mUploadMessageForAndroid5.onReceiveValue(new Uri[]{});
+            }
+            mUploadMessageForAndroid5 = null;
+        } else if (requestCode == REQUEST_GET_THE_THUMBNAIL) {
+            if (resultCode == Activity.RESULT_OK) {
+                File file = new File(mCurrentPhotoPath);
+                Uri localUri = Uri.fromFile(file);
+                Intent localIntent = new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE, localUri);
+                mActivity.sendBroadcast(localIntent);
+
+                Uri result = Uri.fromFile(file);
+                mUploadMessageForAndroid5.onReceiveValue(new Uri[]{result});
+                mUploadMessageForAndroid5 = null;
+            } else {
+
+                File file = new File(mCurrentPhotoPath);
+                Log.v(TAG, TAG + " # file=" + file.exists());
+                if (file.exists()) {
+                    file.delete();
+                }
+            }
+        }
+
+
+        super.onActivityResult(requestCode, resultCode, intent);
+       // mWebView.onActivityResult(requestCode, resultCode, intent);
+    }
+
+   private Activity mActivity;
+    @SuppressLint({"SetJavaScriptEnabled", "WrongViewCast"})
+    @Override
+    protected void onCreate(Bundle savedInstanceState){
+        super.onCreate(savedInstanceState);
+        setContentView(R.layout.activity_main);
+
+        Log.d(TAG, "onCreate: ##########################");
+
+
+
+        mActivity = this;
+
+        if(Build.VERSION.SDK_INT >=23 && (ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED)) {
+            ActivityCompat.requestPermissions(MainActivity.this, new String[]
+                    {
+                            Manifest.permission.CAMERA,
+                            Manifest.permission.CAPTURE_VIDEO_OUTPUT,
+                            Manifest.permission.READ_EXTERNAL_STORAGE,
+                            Manifest.permission.WRITE_EXTERNAL_STORAGE
+                    }, 1);
+        }
+
+
+
+        mWebView = (WebView) findViewById(R.id.webview);
+
+        WebSettings webSettings = mWebView.getSettings();
+        webSettings.setJavaScriptEnabled(true);
+        webSettings.setBuiltInZoomControls(true);
+        webSettings.setAllowFileAccess(true);
+        webSettings.setAllowFileAccessFromFileURLs(true);
+        webSettings.setAllowUniversalAccessFromFileURLs(true);
+        webSettings.setAllowContentAccess(true);
+        webSettings.setLoadWithOverviewMode(true);
+        webSettings.setPluginState(WebSettings.PluginState.ON);
+
+
+
+
+
+
+        mWebView.requestFocusFromTouch();
+        mWebView.setWebViewClient(new MyWebViewClient());
+
+
+        final ProgressBar progressBar = (ProgressBar) findViewById(R.id.progressBar);
+        mWebView.setWebChromeClient(new WebChromeClient() {
+            public void onProgressChanged(WebView view, int progress) {
+                progressBar.setProgress(progress);
+                if (progress == 100) {
+                    progressBar.setVisibility(mWebView.GONE);
+
+                } else {
+                    progressBar.setVisibility(mWebView.VISIBLE);
+                }
+            }
+
+            @Override
+            public void onPermissionRequest(final PermissionRequest request) {
+                Log.i("", "|> onPermissionRequest");
+
+                MainActivity.this.runOnUiThread(new Runnable(){
+                    @TargetApi(Build.VERSION_CODES.LOLLIPOP)
+                    @Override
+                    public void run() {
+                        Log.i("", "|> onPermissionRequest run");
+                        request.grant(request.getResources());
+                    }// run
+                });// MainActivity
+
+
+
+
+
+            }// onPermissionRequest
+
+
+            //3.0++
+            public void openFileChooser(ValueCallback<Uri> uploadMsg, String acceptType) {
+                Log.d(TAG, "openFileChooser: 3.0++");
+                openFileChooserImpl(uploadMsg);
+            }
+
+            //3.0--
+            public void openFileChooser(ValueCallback<Uri> uploadMsg) {
+                Log.d(TAG, "openFileChooser: 3.0--");
+                openFileChooserImpl(uploadMsg);
+            }
+
+            public void openFileChooser(ValueCallback<Uri> uploadMsg, String acceptType, String capture) {
+                Log.d(TAG, "openFileChooser: ");
+                openFileChooserImpl(uploadMsg);
+            }
+
+            // For Android > 5.0
+            public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> uploadMsg, WebChromeClient.FileChooserParams fileChooserParams) {
+                openFileChooserImplForAndroid5(uploadMsg);
+                return true;
+            }
+
+
+
+
+            public void onPageFinished(WebView view, String url) { mWebView.loadUrl("javascript:(function() { document.getElementsByTagName('video')[0].play(); })()"); }
+
+
+            public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                handler.proceed(); // Ignore SSL certificate errors
+            }
+
+        });
+
+
+
+       // mWebView.setListener(this, this);
+        mWebView.loadUrl("your_app_url");
+
+
+
+
+
+
+    }
+
+
+    private String[] items = new String[]{"Choose Image","Take Photo"};
+    private void openFileChooserImpl(ValueCallback<Uri> uploadMsg) {
+        Log.d(TAG, "openFileChooserImpl: 1");
+
+        mUploadMessage = uploadMsg;
+        Log.d(TAG, "openFileChooserImpl: 2");
+        new AlertDialog.Builder(mActivity)
+                .setItems(items, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (items[which].equals(items[0])) {
+                            Intent i = new Intent(Intent.ACTION_GET_CONTENT);
+                            i.addCategory(Intent.CATEGORY_OPENABLE);
+                            i.setType("image/*");
+                            startActivityForResult(Intent.createChooser(i, "File Chooser"), FILECHOOSER_RESULTCODE);
+                        } else if (items[which].equals(items[1])) {
+                            dispatchTakePictureIntent();
+                        }
+                        dialog.dismiss();
+                    }
+                })
+                .setOnCancelListener(new DialogInterface.OnCancelListener() {
+                    @Override
+                    public void onCancel(DialogInterface dialog) {
+                        Log.v(TAG, TAG + " # onCancel");
+                        mUploadMessage = null;
+                        dialog.dismiss();
+                    }})
+                .show();
+        Log.d(TAG, "openFileChooserImpl: 3");
+    }
+
+    private void openFileChooserImplForAndroid5(ValueCallback<Uri[]> uploadMsg) {
+        mUploadMessageForAndroid5 = uploadMsg;
+        Log.d(TAG, "openFileChooserImplForAndroid5: 1");
+        new AlertDialog.Builder(mActivity)
+                .setItems(items, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (items[which].equals(items[0])) {
+                            Intent contentSelectionIntent = new Intent(Intent.ACTION_GET_CONTENT);
+                            contentSelectionIntent.addCategory(Intent.CATEGORY_OPENABLE);
+                            contentSelectionIntent.setType("image/*");
+
+                            Intent chooserIntent = new Intent(Intent.ACTION_CHOOSER);
+                            chooserIntent.putExtra(Intent.EXTRA_INTENT, contentSelectionIntent);
+                            chooserIntent.putExtra(Intent.EXTRA_TITLE, "Image Chooser");
+
+                            startActivityForResult(chooserIntent, FILECHOOSER_RESULTCODE_FOR_ANDROID_5);
+                        } else if (items[which].equals(items[1])) {
+                            dispatchTakePictureIntent();
+                        }
+                        dialog.dismiss();
+                    }
+                })
+                .setOnCancelListener(new DialogInterface.OnCancelListener() {
+                    @Override
+                    public void onCancel(DialogInterface dialog) {
+                        Log.v(TAG, TAG + " # onCancel");
+                        //important to return new Uri[]{}, when nothing to do. This can slove input file wrok for once.
+                        //InputEventReceiver: Attempted to finish an input event but the input event receiver has already been disposed.
+                        mUploadMessageForAndroid5.onReceiveValue(new Uri[]{});
+                        mUploadMessageForAndroid5 = null;
+                        dialog.dismiss();
+                    }}).show();
+        Log.d(TAG, "openFileChooserImplForAndroid5: 2");
+    }
+
+    private void dispatchTakePictureIntent() {
+        Intent takePictureIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        if (takePictureIntent.resolveActivity(mActivity.getPackageManager()) != null) {
+//            File file = new File(createImageFile());
+            Uri imageUri = null;
+            try {
+		// *** the code may different if target android v24+
+                imageUri = Uri.fromFile(createImageFile());
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+            //temp sd card file
+            takePictureIntent.putExtra(MediaStore.EXTRA_OUTPUT, imageUri);
+            startActivityForResult(takePictureIntent, REQUEST_GET_THE_THUMBNAIL);
+        }
+    }
+
+    private File createImageFile() throws IOException {
+        // Create an image file name
+        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
+        String imageFileName = "JPEG_" + timeStamp + "_";
+        File storageDir = new File(Environment.getExternalStorageDirectory().getAbsolutePath() + "/don_test/");
+        if (!storageDir.exists()) {
+            storageDir.mkdirs();
+        }
+        File image = File.createTempFile(
+                imageFileName,  /* prefix */
+                ".jpg",         /* suffix */
+                storageDir      /* directory */
+        );
+
+        // Save a file: path for use with ACTION_VIEW intents
+        mCurrentPhotoPath = image.getAbsolutePath();
+        return image;
+    }
+
+
+
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 1) {
+            if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                Toast.makeText(MainActivity.this,"permission granted", Toast.LENGTH_SHORT).show();
+                // perform your action here
+
+            } else {
+                Toast.makeText(MainActivity.this,"permission not granted", Toast.LENGTH_SHORT).show();
+            }
+        }
+
+    }
+
+    private WebView mWebView;
+
+    @SuppressLint("NewApi")
+    @Override
+    protected void onResume() {
+        super.onResume();
+        mWebView.onResume();
+        // ...
+    }
+
+    @SuppressLint("NewApi")
+    @Override
+    protected void onPause() {
+        mWebView.onPause();
+        // ...
+        super.onPause();
+    }
+
+    @Override
+    protected void onDestroy() {
+      //  mWebView.onDestroy();
+        // ...
+        super.onDestroy();
+    }
+
+
+
+    @Override
+    public void onBackPressed() {
+      //  if (!mWebView.onBackPressed()) { return; }
+        // ...
+        super.onBackPressed();
+    }
+
+...
